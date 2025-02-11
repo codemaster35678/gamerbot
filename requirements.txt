@@ -1,0 +1,6 @@
+discord
+python-dotenv
+random
+asyncio
+os
+json
