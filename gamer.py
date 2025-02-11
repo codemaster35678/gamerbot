@@ -10,6 +10,21 @@ from datetime import datetime
 import os
 from dotenv import load_dotenv
 
+import socket
+import threading
+
+def health_check_server():
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.bind(("0.0.0.0", 8080))  # Koyeb checks port 80
+    server.listen(5)
+
+    while True:
+        conn, addr = server.accept()
+        conn.close()  # Instantly close the connection to pass the check
+
+threading.Thread(target=health_check_server, daemon=True).start()
+
+
 # Load environment variables from .env file
 load_dotenv()
 
