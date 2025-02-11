@@ -28,6 +28,9 @@ threading.Thread(target=health_check_server, daemon=True).start()
 # Load environment variables from .env file
 load_dotenv()
 
+def is_admin(ctx):
+    return ctx.author.id in whitelist_ids
+
 # Retrieve sensitive data securely
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 purchases_category_id = int(os.getenv("PURCHASES_CATEGORY_ID"))
@@ -58,6 +61,7 @@ shop_name = "Gamer's Services and Shop"
 
 # Terms & Conditions Command
 @bot.command(name="terms")
+@commands.check(is_admin)
 async def terms(ctx):
     terms_embed = discord.Embed(
         title="**Terms & Conditions**",
@@ -115,6 +119,7 @@ async def rate(ctx, stars: int, *, feedback: str):
 
 # List Product Command (Without "Buy Now" button)
 @bot.command(name="listproduct")
+@commands.check(is_admin)
 async def list_product(ctx):
     await ctx.send("Please provide the password:")
     channel_id = await bot.wait_for('message', check=lambda m: m.author == ctx.author and m.channel == ctx.channel)
@@ -146,6 +151,7 @@ async def list_product(ctx):
 
 # Verify Command
 @bot.command(name="verify")
+@commands.check(is_admin)
 async def verify(ctx):
     embed = discord.Embed(
         title="**Verify Your Account**",
@@ -290,6 +296,7 @@ async def on_ready():
 
 # DM All Members Command
 @bot.command()
+@commands.check(is_admin)
 async def dmall(ctx, *, message: str):
     """DM all members in the server. 📩"""
     if not ctx.author.guild_permissions.administrator:
