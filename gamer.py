@@ -117,11 +117,11 @@ async def rate(ctx, stars: int, *, feedback: str):
         await ctx.send("Unable to find the feedback channel.")
 
 
-# List Product Command (Without "Buy Now" button)
+
 @bot.command(name="listproduct")
 @commands.check(is_admin)
 async def list_product(ctx):
-    await ctx.send("Please provide the password:")
+    await ctx.send("Please provide the channel ID where the product listing will be sent:")
     channel_id = await bot.wait_for('message', check=lambda m: m.author == ctx.author and m.channel == ctx.channel)
     channel = bot.get_channel(int(channel_id.content))
 
@@ -131,7 +131,7 @@ async def list_product(ctx):
     await ctx.send("Please provide the description (with emojis supported):")
     description = await bot.wait_for('message', check=lambda m: m.author == ctx.author and m.channel == ctx.channel)
 
-    await ctx.send("Please provide the image URL or type 'none' for no image:")
+    await ctx.send("Please provide the image URL or upload an image (or type 'none' for no image):")
     image = await bot.wait_for('message', check=lambda m: m.author == ctx.author and m.channel == ctx.channel)
 
     await ctx.send("Please provide the footer text:")
@@ -139,13 +139,49 @@ async def list_product(ctx):
 
     embed = discord.Embed(title=f"**{title.content}**", description=description.content, color=discord.Color.blue())
 
+    # Add separator line
+    embed.add_field(name="\u200b", value="\u200b", inline=False)
+    
     if image.content.lower() != 'none':
         embed.set_image(url=image.content)
 
     embed.set_footer(text=footer.content)
 
-    await channel.send(embed=embed)
-    await ctx.send("✅ Product listing sent successfully!")
+    await ctx.send("Do you want to add a 'Buy Now' button? (yes/no)")
+    buy_button_response = await bot.wait_for('message', check=lambda m: m.author == ctx.author and m.channel == ctx.channel)
+
+    if buy_button_response.content.lower() == "yes":
+        # Add Buy Now button
+        view = View()
+        button = Button(label="Buy Now 🛒", style=discord.ButtonStyle.green, custom_id="buy_now")
+
+        async def buy_now_callback(interaction):
+            # Create a new channel for the user under the 'Purchases' category
+            guild = interaction.guild
+            user = interaction.user
+            category = discord.utils.get(guild.categories, id=purchases_category_id)
+            
+            if category:
+                # Create the purchase channel under the specified category
+                purchase_channel = await guild.create_text_channel(f"purchase-{user.name}-{random.randint(1000, 9999)}", category=category)
+
+                # Send the same embed message to the new channel
+                await purchase_channel.send(embed=embed)
+
+                # Add permissions for the user
+                await purchase_channel.set_permissions(user, read_messages=True, send_messages=True, read_message_history=True)
+
+                await interaction.response.send_message(f"Your purchase request has been created in {purchase_channel.mention}!", ephemeral=True)
+            else:
+                await interaction.response.send_message("Failed to find the 'Purchases' category.", ephemeral=True)
+
+        button.callback = buy_now_callback
+        view.add_item(button)
+
+        await channel.send(embed=embed, view=view)
+    else:
+        await channel.send(embed=embed)
+
 
 
 
@@ -303,22 +339,24 @@ async def dmall(ctx, *, message: str):
         await ctx.send("You do not have permission to use this command. ❌")
         return
 
-    members = ctx.guild.members
     success_count = 0
     failed_count = 0
 
-    for member in members:
-        if member.bot:  # Skip bot accounts
+    await ctx.send("📨 Sending messages... This may take a while.")
+
+    for member in ctx.guild.members:
+        if member.bot or member == ctx.author:  # Skip bots and the command author
             continue
         try:
             await member.send(message)
             success_count += 1
-        except Exception as e:
-            failed_count += 1
+        except discord.Forbidden:
+            failed_count += 1  # DM is disabled for this user
+        except discord.HTTPException as e:
+            failed_count += 1  # Other errors like rate limits
             print(f"Could not DM {member.name}: {e}")
 
-    await ctx.send(f"📩 Message sent to {success_count} members. Failed to DM {failed_count} members.")
-
+    await ctx.send(f"✅ Message sent to {success_count} members. ❌ Failed to DM {failed_count} members.")
 
 
 BACKUP_FOLDER = r"C:\Users\shali\OneDrive\Desktop\RAM\EXPERIMENTS\BACKUP\BACKUP BOT\backups"
