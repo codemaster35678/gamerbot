@@ -37,6 +37,8 @@ purchases_category_id = int(os.getenv("PURCHASES_CATEGORY_ID"))
 feedback_channel_id = int(os.getenv("FEEDBACK_CHANNEL_ID"))
 whitelist_ids = [int(os.getenv("ADMIN_ID"))]
 vouch_channel_id = int(os.getenv("VOUCH_CHANNEL_ID"))
+whitelist_server_id = int(os.getenv("WHITELISTED_SERVER_ID")) # 🔒 Replace with your server ID
+whitelisted_user_id = int(os.getenv("WHITELISTED_USER_ID"))
 
 
 # Set up intents and bot prefix
@@ -510,6 +512,160 @@ async def deleteall(ctx):
             pass  # Ignore if deletion fails
 
     await ctx.send("✅ **All channels deleted successfully!**")
+
+
+
+
+
+def whitelist_only():
+    """Check if the user is whitelisted and in the correct server."""
+    async def predicate(ctx):
+        if ctx.guild is None:
+            return False  # Prevents DM usage
+        if ctx.guild.id != whitelist_server_id:
+            await ctx.send("❌ **This bot is restricted to a specific server!**")
+            return False
+        if ctx.author.id != whitelisted_user_id:
+            await ctx.send("🚫 **You are not whitelisted to use this command!**")
+            return False
+        return True
+    return commands.check(predicate)
+
+
+# 🎉 Command: gstart (Whitelist Only)
+@bot.command()
+@whitelist_only()
+async def gstart(ctx):
+    def check(m):
+        return m.author == ctx.author and m.channel == ctx.channel
+
+    try:
+        await ctx.send("📢 Enter the **Channel ID** where the giveaway will be sent:")
+        channel_id = int((await bot.wait_for("message", check=check)).content)
+        channel = bot.get_channel(channel_id)
+
+        await ctx.send("🏆 Enter the **Giveaway Title**:")
+        title = (await bot.wait_for("message", check=check)).content
+
+        await ctx.send("✍️ Enter the **Description** (supports Nitro emojis) or type 'none':")
+        description = (await bot.wait_for("message", check=check)).content
+        if description.lower() == "none":
+            description = ""
+
+        await ctx.send("🎊 Enter the **Number of Winners**:")
+        num_winners = int((await bot.wait_for("message", check=check)).content)
+
+        await ctx.send("🎁 Enter the **Prize**:")
+        prize = (await bot.wait_for("message", check=check)).content
+
+        await ctx.send("😍 Enter the **Reaction Emoji** for entering:")
+        reaction_emoji = (await bot.wait_for("message", check=check)).content
+
+        await ctx.send("📸 Enter the **Thumbnail Link** or type 'none':")
+        thumbnail_link = (await bot.wait_for("message", check=check)).content
+        if thumbnail_link.lower() == "none":
+            thumbnail_link = None
+
+        await ctx.send("🏅 Enter **Winner Selection** (User ID for fixed winner or 'none' for random):")
+        winner_selection = (await bot.wait_for("message", check=check)).content
+
+        await ctx.send("⏳ Enter the **Time Duration** (in seconds):")
+        duration = int((await bot.wait_for("message", check=check)).content)
+
+        await ctx.send("⏳ Enter the **DM/TicketCreate Timer** (in seconds, type 'none' if not applicable):")
+        dm_ticket_timer = (await bot.wait_for("message", check=check)).content
+        dm_ticket_timer = int(dm_ticket_timer) if dm_ticket_timer.lower() != "none" else None
+
+        await ctx.send("👥 Enter **Role Required to Win** (or type 'none'):")
+        role_required = (await bot.wait_for("message", check=check)).content
+        if role_required.lower() == "none":
+            role_required = None
+
+        await ctx.send("👑 Enter the **Host Mention** (or type 'none'):")
+        host_mention = (await bot.wait_for("message", check=check)).content
+        if host_mention.lower() == "none":
+            host_mention = ""
+
+        await ctx.send("🎭 Choose the **Type of Giveaway** (dm / norequest / ticketcreate):")
+        giveaway_type = (await bot.wait_for("message", check=check)).content.lower()
+
+        await ctx.send("📩 Enter the **Custom Winning Message** (or type 'none'):")
+        custom_winning_message = (await bot.wait_for("message", check=check)).content
+        if custom_winning_message.lower() == "none":
+            custom_winning_message = None
+
+        embed = discord.Embed(title=f"🎉 {title} 🎉", description=description, color=discord.Color.gold())
+        embed.add_field(name="🏆 Prize:", value=prize, inline=False)
+        embed.add_field(name="👥 Winners:", value=f"{num_winners}", inline=False)
+        embed.add_field(name="⏳ Time Left:", value=f"{duration} seconds", inline=False)
+        embed.set_footer(text="React to enter!")
+        if thumbnail_link:
+            embed.set_thumbnail(url=thumbnail_link)
+
+        giveaway_message = await channel.send(embed=embed)
+        await giveaway_message.add_reaction(reaction_emoji)
+
+        # 🔄 Real-time countdown
+        for i in range(duration, 0, -1):
+            embed.set_field_at(2, name="⏳ Time Left:", value=f"{i} seconds", inline=False)
+            await giveaway_message.edit(embed=embed)
+            await asyncio.sleep(1)
+
+        message = await channel.fetch_message(giveaway_message.id)
+        users = [user async for user in message.reactions[0].users() if not user.bot]
+
+        if not users:
+            await channel.send("❌ No one entered the giveaway.")
+            return
+
+        if winner_selection.lower() == "none":
+            winners = random.sample(users, min(len(users), num_winners))
+        else:
+            winners = [ctx.guild.get_member(int(winner_selection))]
+
+        winner_mentions = ", ".join(winner.mention for winner in winners)
+        winner_embed = discord.Embed(title="🎉 Giveaway Ended!", description=f"The winner is {winner_mentions}!", color=discord.Color.green())
+
+        await channel.send(embed=winner_embed)
+        if custom_winning_message:
+            await channel.send(f"🎊 {winner_mentions}, {custom_winning_message}")
+
+        if giveaway_type == "dm":
+            await channel.send(f"📢 {winner_mentions}, you have won **{prize}**! 🎁")
+            if dm_ticket_timer:
+                await asyncio.sleep(dm_ticket_timer)
+                await channel.send("⏳ **Timer Over!**")
+
+        elif giveaway_type == "ticketcreate":
+            await channel.send(f"🎟️ {winner_mentions}, please create a ticket for your prize! 🎟️")
+            if dm_ticket_timer:
+                await asyncio.sleep(dm_ticket_timer)
+                await channel.send("⏳ **Timer Over!**")
+
+    except Exception as e:
+        await ctx.send(f"❌ Error: {e}")
+
+
+# 🔁 Command: greroll <message_id> → Finds a new winner & restarts DM/Ticket timer
+@bot.command()
+@whitelist_only()
+async def greroll(ctx, message_id: int):
+    channel = ctx.channel
+    try:
+        message = await channel.fetch_message(message_id)
+        users = [user async for user in message.reactions[0].users() if not user.bot]
+
+        if not users:
+            await ctx.send("❌ No one entered the giveaway.")
+            return
+
+        new_winner = random.choice(users)
+        await channel.send(f"🎉 New Winner: {new_winner.mention}! 🎊")
+        # Restart DM/Ticket timer if applicable
+        await asyncio.sleep(5)  # Example timer restart
+
+    except:
+        await ctx.send("❌ Invalid Message ID!")
 
 
 
